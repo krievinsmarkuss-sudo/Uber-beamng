@@ -1,0 +1,672 @@
+<!DOCTYPE html>
+<html lang="lv">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#000000" />
+  <title>Riga Ride Mobile</title>
+
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-tap-highlight-color: transparent;
+      font-family: Inter, Arial, sans-serif;
+    }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #000;
+      color: #fff;
+      touch-action: manipulation;
+    }
+
+    #map {
+      position: fixed;
+      inset: 0;
+      width: 100vw;
+      height: 100vh;
+      background: #111;
+      z-index: 1;
+    }
+
+    .top-bar {
+      position: fixed;
+      top: env(safe-area-inset-top, 12px);
+      left: 12px;
+      right: 12px;
+      z-index: 1000;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      pointer-events: none;
+    }
+
+    .logo-box,
+    .earnings-box {
+      background: rgba(0, 0, 0, 0.88);
+      backdrop-filter: blur(14px);
+      border: 1px solid #222;
+      border-radius: 999px;
+      padding: 10px 14px;
+      box-shadow: 0 8px 25px rgba(0,0,0,.35);
+      pointer-events: auto;
+    }
+
+    .logo-box {
+      font-size: 18px;
+      font-weight: 900;
+      letter-spacing: -0.5px;
+    }
+
+    .logo-box span {
+      color: #06c167;
+    }
+
+    .earnings-box {
+      font-weight: 900;
+      font-size: 16px;
+    }
+
+    .bottom-sheet {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 1000;
+      background: #000;
+      border-top-left-radius: 26px;
+      border-top-right-radius: 26px;
+      border: 1px solid #222;
+      padding: 12px 14px calc(14px + env(safe-area-inset-bottom, 0px));
+      box-shadow: 0 -18px 60px rgba(0,0,0,.55);
+      max-height: 58vh;
+      overflow-y: auto;
+    }
+
+    .handle {
+      width: 44px;
+      height: 5px;
+      background: #333;
+      border-radius: 99px;
+      margin: 0 auto 12px;
+    }
+
+    .sheet-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+
+    .sheet-title {
+      font-size: 20px;
+      font-weight: 900;
+    }
+
+    .online {
+      background: #06c167;
+      color: #000;
+      padding: 7px 12px;
+      border-radius: 999px;
+      font-weight: 900;
+      font-size: 12px;
+    }
+
+    .address-card {
+      background: #101010;
+      border: 1px solid #222;
+      border-radius: 20px;
+      padding: 14px;
+      margin-bottom: 12px;
+    }
+
+    .address-row {
+      display: grid;
+      grid-template-columns: 18px 1fr;
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+
+    .address-row:last-child {
+      margin-bottom: 0;
+    }
+
+    .dot {
+      width: 13px;
+      height: 13px;
+      border-radius: 50%;
+      margin-top: 3px;
+    }
+
+    .pickup-dot {
+      background: #06c167;
+    }
+
+    .dropoff-dot {
+      background: #fff;
+    }
+
+    .label {
+      color: #9b9b9b;
+      font-size: 12px;
+      margin-bottom: 3px;
+    }
+
+    .place {
+      font-size: 15px;
+      font-weight: 800;
+      line-height: 1.25;
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+
+    .stat {
+      background: #101010;
+      border: 1px solid #222;
+      border-radius: 16px;
+      padding: 10px 8px;
+      text-align: center;
+      min-height: 58px;
+    }
+
+    .stat .label {
+      font-size: 11px;
+      margin-bottom: 5px;
+    }
+
+    .stat-value {
+      font-size: 14px;
+      font-weight: 900;
+    }
+
+    .buttons {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 10px;
+    }
+
+    button {
+      width: 100%;
+      border: none;
+      border-radius: 999px;
+      padding: 16px 18px;
+      font-size: 16px;
+      font-weight: 900;
+      cursor: pointer;
+      min-height: 52px;
+      touch-action: manipulation;
+    }
+
+    .primary {
+      background: #06c167;
+      color: #000;
+    }
+
+    .secondary {
+      background: #fff;
+      color: #000;
+    }
+
+    .danger {
+      background: #1f1f1f;
+      color: #fff;
+      border: 1px solid #333;
+    }
+
+    .map-status {
+      position: fixed;
+      left: 12px;
+      right: 12px;
+      bottom: calc(58vh + 12px);
+      z-index: 999;
+      background: rgba(0, 0, 0, 0.86);
+      backdrop-filter: blur(14px);
+      border: 1px solid #222;
+      border-radius: 18px;
+      padding: 12px 14px;
+      box-shadow: 0 10px 30px rgba(0,0,0,.35);
+    }
+
+    .map-status strong {
+      display: block;
+      font-size: 14px;
+      margin-bottom: 3px;
+    }
+
+    .map-status span {
+      color: #aaa;
+      font-size: 12px;
+    }
+
+    .car-icon {
+      background: #000;
+      border: 3px solid #06c167;
+      color: #fff;
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      font-size: 18px;
+      box-shadow: 0 10px 25px rgba(0,0,0,.45);
+    }
+
+    .pickup-icon {
+      background: #06c167;
+      border: 3px solid #fff;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      box-shadow: 0 10px 25px rgba(0,0,0,.35);
+    }
+
+    .dropoff-icon {
+      background: #fff;
+      border: 3px solid #000;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      box-shadow: 0 10px 25px rgba(0,0,0,.35);
+    }
+
+    .leaflet-control-zoom {
+      margin-bottom: 245px !important;
+    }
+
+    .leaflet-control-attribution {
+      font-size: 9px;
+    }
+
+    @media (min-width: 800px) {
+      .bottom-sheet {
+        left: 20px;
+        right: auto;
+        bottom: 20px;
+        width: 390px;
+        max-height: calc(100vh - 120px);
+        border-radius: 26px;
+      }
+
+      .map-status {
+        left: auto;
+        right: 20px;
+        top: 80px;
+        bottom: auto;
+        width: 300px;
+      }
+
+      .leaflet-control-zoom {
+        margin-bottom: 20px !important;
+      }
+    }
+
+    @media (max-height: 720px) {
+      .bottom-sheet {
+        max-height: 64vh;
+      }
+
+      .stats {
+        grid-template-columns: repeat(2, 1fr);
+      }
+
+      .map-status {
+        display: none;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div id="map"></div>
+
+  <div class="top-bar">
+    <div class="logo-box">Riga<span>Ride</span></div>
+    <div class="earnings-box" id="earnings">€0.00</div>
+  </div>
+
+  <div class="map-status">
+    <strong id="mapStatus">Rīgas karte</strong>
+    <span id="mapInfo">OSM karte + maršruts pa ceļiem</span>
+  </div>
+
+  <div class="bottom-sheet">
+    <div class="handle"></div>
+
+    <div class="sheet-header">
+      <div class="sheet-title">Pasūtījums</div>
+      <div class="online">ONLINE</div>
+    </div>
+
+    <div class="address-card">
+      <div class="address-row">
+        <div class="dot pickup-dot"></div>
+        <div>
+          <div class="label">Paņemšana</div>
+          <div class="place" id="pickupText">Spied “Jauns pasūtījums”</div>
+        </div>
+      </div>
+
+      <div class="address-row">
+        <div class="dot dropoff-dot"></div>
+        <div>
+          <div class="label">Galamērķis</div>
+          <div class="place" id="dropoffText">Maršruts parādīsies kartē</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="stats">
+      <div class="stat">
+        <div class="label">Attālums</div>
+        <div class="stat-value" id="distance">—</div>
+      </div>
+
+      <div class="stat">
+        <div class="label">Laiks</div>
+        <div class="stat-value" id="duration">—</div>
+      </div>
+
+      <div class="stat">
+        <div class="label">Cena</div>
+        <div class="stat-value" id="price">—</div>
+      </div>
+
+      <div class="stat">
+        <div class="label">Klients</div>
+        <div class="stat-value" id="passenger">—</div>
+      </div>
+    </div>
+
+    <div class="buttons">
+      <button class="primary" onclick="newOrder()">Jauns pasūtījums</button>
+      <button class="secondary" onclick="acceptOrder()">Pieņemt braucienu</button>
+      <button class="danger" onclick="finishOrder()">Pabeigt braucienu</button>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <script>
+    const rigaPlaces = [
+      { name: "Rīgas Centrālā stacija", lat: 56.9475, lng: 24.1202 },
+      { name: "Brīvības piemineklis", lat: 56.9515, lng: 24.1133 },
+      { name: "Vecrīga", lat: 56.9496, lng: 24.1052 },
+      { name: "Origo", lat: 56.9479, lng: 24.1209 },
+      { name: "Āgenskalna tirgus", lat: 56.9362, lng: 24.0718 },
+      { name: "Spice", lat: 56.9285, lng: 24.0174 },
+      { name: "Akropole Rīga", lat: 56.9234, lng: 24.1752 },
+      { name: "Domina Shopping", lat: 56.9664, lng: 24.1633 },
+      { name: "Alfa", lat: 56.9849, lng: 24.2028 },
+      { name: "Mežaparks", lat: 57.0054, lng: 24.1586 },
+      { name: "Rīgas Zooloģiskais dārzs", lat: 57.0065, lng: 24.1592 },
+      { name: "Dailes teātris", lat: 56.9607, lng: 24.1247 },
+      { name: "Latvijas Nacionālā bibliotēka", lat: 56.9410, lng: 24.0964 },
+      { name: "Ķīpsala", lat: 56.9498, lng: 24.0830 },
+      { name: "Skanste", lat: 56.9695, lng: 24.1198 },
+      { name: "Jugla", lat: 56.9867, lng: 24.2450 },
+      { name: "Ziepniekkalns", lat: 56.8997, lng: 24.0986 },
+      { name: "Purvciems", lat: 56.9580, lng: 24.1830 },
+      { name: "Teika", lat: 56.9774, lng: 24.1827 },
+      { name: "Imanta", lat: 56.9562, lng: 24.0004 },
+      { name: "Mangaļsala", lat: 57.0582, lng: 24.0709 },
+      { name: "Bolderāja", lat: 57.0327, lng: 24.0375 },
+      { name: "Vecmīlgrāvis", lat: 57.0343, lng: 24.1015 },
+      { name: "Pļavnieki", lat: 56.9390, lng: 24.2045 }
+    ];
+
+    const passengers = [
+      "Anna", "Mārtiņš", "Roberts", "Laura", "Elīna",
+      "Kristaps", "Sofija", "Rihards", "Paula", "Dāvis",
+      "Emīls", "Linda", "Artūrs", "Megija"
+    ];
+
+    let currentOrder = null;
+    let routeLine = null;
+    let pickupMarker = null;
+    let dropoffMarker = null;
+    let earnings = 0;
+
+    const driverStart = { lat: 56.9496, lng: 24.1052 };
+
+    const map = L.map("map", {
+      zoomControl: false,
+      tap: true
+    }).setView([56.9496, 24.1052], 12);
+
+    L.control.zoom({
+      position: "bottomright"
+    }).addTo(map);
+
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19,
+      attribution: "&copy; OpenStreetMap"
+    }).addTo(map);
+
+    const carIcon = L.divIcon({
+      html: `<div class="car-icon">🚗</div>`,
+      className: "",
+      iconSize: [36, 36],
+      iconAnchor: [18, 18]
+    });
+
+    const pickupIcon = L.divIcon({
+      html: `<div class="pickup-icon"></div>`,
+      className: "",
+      iconSize: [28, 28],
+      iconAnchor: [14, 14]
+    });
+
+    const dropoffIcon = L.divIcon({
+      html: `<div class="dropoff-icon"></div>`,
+      className: "",
+      iconSize: [28, 28],
+      iconAnchor: [14, 14]
+    });
+
+    const driverMarker = L.marker([driverStart.lat, driverStart.lng], {
+      icon: carIcon
+    }).addTo(map).bindPopup("Tu / vadītājs");
+
+    function randomItem(arr) {
+      return arr[Math.floor(Math.random() * arr.length)];
+    }
+
+    function formatKm(meters) {
+      return (meters / 1000).toFixed(1) + " km";
+    }
+
+    function formatMin(seconds) {
+      return Math.round(seconds / 60) + " min";
+    }
+
+    function clearRoute() {
+      if (routeLine) map.removeLayer(routeLine);
+      if (pickupMarker) map.removeLayer(pickupMarker);
+      if (dropoffMarker) map.removeLayer(dropoffMarker);
+
+      routeLine = null;
+      pickupMarker = null;
+      dropoffMarker = null;
+    }
+
+    async function getRoute(from, to) {
+      const url =
+        `https://router.project-osrm.org/route/v1/driving/` +
+        `${from.lng},${from.lat};${to.lng},${to.lat}` +
+        `?overview=full&geometries=geojson`;
+
+      const res = await fetch(url);
+      const data = await res.json();
+
+      if (!data.routes || !data.routes.length) {
+        throw new Error("Maršrutu nevarēja aprēķināt.");
+      }
+
+      return data.routes[0];
+    }
+
+    async function drawRoute(from, to) {
+      try {
+        document.getElementById("mapStatus").textContent = "Aprēķina maršrutu...";
+        document.getElementById("mapInfo").textContent = "Maršruts tiek zīmēts pa Rīgas ceļiem";
+
+        const route = await getRoute(from, to);
+
+        if (routeLine) map.removeLayer(routeLine);
+
+        const coords = route.geometry.coordinates.map(c => [c[1], c[0]]);
+
+        routeLine = L.polyline(coords, {
+          weight: 7,
+          opacity: 0.95,
+          color: "#06c167"
+        }).addTo(map);
+
+        map.fitBounds(routeLine.getBounds(), {
+          paddingTopLeft: [30, 90],
+          paddingBottomRight: [30, 330]
+        });
+
+        document.getElementById("distance").textContent = formatKm(route.distance);
+        document.getElementById("duration").textContent = formatMin(route.duration);
+
+        const price = Math.max(
+          4,
+          2.5 + route.distance / 1000 * 0.95 + route.duration / 60 * 0.12
+        );
+
+        document.getElementById("price").textContent = "€" + price.toFixed(2);
+
+        currentOrder.distance = route.distance;
+        currentOrder.duration = route.duration;
+        currentOrder.price = price;
+
+        document.getElementById("mapStatus").textContent = "Maršruts gatavs";
+        document.getElementById("mapInfo").textContent = "Brauciens pa īstiem Rīgas ceļiem";
+
+      } catch (err) {
+        alert("Kļūda: " + err.message);
+        document.getElementById("mapStatus").textContent = "Maršruta kļūda";
+        document.getElementById("mapInfo").textContent = "Pārbaudi internetu";
+      }
+    }
+
+    async function newOrder() {
+      clearRoute();
+
+      let pickup = randomItem(rigaPlaces);
+      let dropoff = randomItem(rigaPlaces);
+
+      while (dropoff.name === pickup.name) {
+        dropoff = randomItem(rigaPlaces);
+      }
+
+      currentOrder = {
+        pickup,
+        dropoff,
+        passenger: randomItem(passengers),
+        accepted: false
+      };
+
+      document.getElementById("pickupText").textContent = pickup.name;
+      document.getElementById("dropoffText").textContent = dropoff.name;
+      document.getElementById("passenger").textContent = currentOrder.passenger;
+      document.getElementById("distance").textContent = "—";
+      document.getElementById("duration").textContent = "—";
+      document.getElementById("price").textContent = "—";
+
+      pickupMarker = L.marker([pickup.lat, pickup.lng], {
+        icon: pickupIcon
+      }).addTo(map).bindPopup("Paņemšana: " + pickup.name);
+
+      dropoffMarker = L.marker([dropoff.lat, dropoff.lng], {
+        icon: dropoffIcon
+      }).addTo(map).bindPopup("Galamērķis: " + dropoff.name);
+
+      await drawRoute(pickup, dropoff);
+    }
+
+    async function acceptOrder() {
+      if (!currentOrder) {
+        alert("Vispirms izveido jaunu pasūtījumu.");
+        return;
+      }
+
+      currentOrder.accepted = true;
+
+      document.getElementById("mapStatus").textContent = "Brauciens pieņemts";
+      document.getElementById("mapInfo").textContent = "Maršruta līnija paliek kartē";
+
+      if (routeLine) {
+        map.fitBounds(routeLine.getBounds(), {
+          paddingTopLeft: [30, 90],
+          paddingBottomRight: [30, 330]
+        });
+      }
+    }
+
+    async function finishOrder() {
+      if (!currentOrder) {
+        alert("Nav aktīva pasūtījuma.");
+        return;
+      }
+
+      if (!currentOrder.accepted) {
+        alert("Vispirms pieņem braucienu.");
+        return;
+      }
+
+      driverMarker.setLatLng([
+        currentOrder.dropoff.lat,
+        currentOrder.dropoff.lng
+      ]);
+
+      earnings += currentOrder.price || 0;
+      document.getElementById("earnings").textContent = "€" + earnings.toFixed(2);
+
+      document.getElementById("mapStatus").textContent = "Brauciens pabeigts";
+      document.getElementById("mapInfo").textContent = "Nauda pieskaitīta šodienas peļņai";
+
+      clearRoute();
+
+      document.getElementById("pickupText").textContent = "Spied “Jauns pasūtījums”";
+      document.getElementById("dropoffText").textContent = "Maršruts parādīsies kartē";
+      document.getElementById("distance").textContent = "—";
+      document.getElementById("duration").textContent = "—";
+      document.getElementById("price").textContent = "—";
+      document.getElementById("passenger").textContent = "—";
+
+      currentOrder = null;
+    }
+
+    window.addEventListener("resize", () => {
+      setTimeout(() => {
+        map.invalidateSize();
+
+        if (routeLine) {
+          map.fitBounds(routeLine.getBounds(), {
+            paddingTopLeft: [30, 90],
+            paddingBottomRight: [30, 330]
+          });
+        }
+      }, 250);
+    });
+
+    newOrder();
+  </script>
+</body>
+</html>
