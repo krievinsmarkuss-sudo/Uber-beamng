@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="lv">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Rīga Uber Taxi / Delivery OSRM</title>
+
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <style>
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    body { margin: 0; font-family: Inter, Arial, sans-serif; background: #050505; color: #fff; overflow: hidden; }
+    #app { position: relative; width: 100vw; height: 100vh; background: #111; }
+    #map { position: absolute; inset: 0; z-index: 1; }
+
+    .top-bar {
+      position: absolute;
+      top: env(safe-area-inset-top, 12px);
+      left: 12px;
+      right: 12px;
+      z-index: 5;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      pointer-events: none;
+    }
+
+    .brand {
+      pointer-events: auto;
+      background: rgba(0,0,0,0.86);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 999px;
+      padding: 10px 14px;
+      font-weight: 900;
+      letter-spacing: -0.4px;
+      box-shadow: 0 8px 30px rgba(0,0,0,0.35);
+    }
+
+    .gps-btn {
+      pointer-events: auto;
+      width: 44px;
+      height: 44px;
+      border: 0;
+      border-radius: 50%;
+      background: rgba(0,0,0,0.86);
+      color: #fff;
+      font-size: 20px;
+      box-shadow: 0 8px 30px rgba(0,0,0,0.35);
+      cursor: pointer;
+    }
+
+    .panel {
+      position: absolute;
+      left: 10px;
+      right: 10px;
+      bottom: max(10px, env(safe-area-inset-bottom));
+      z-index: 6;
+      background: rgba(10,10,10,0.96);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 26px;
+      box-shadow: 0 -10px 45px rgba(0,0,0,0.45);
+      padding: 14px;
+      max-width: 520px;
+      margin: 0 auto;
+      backdrop-filter: blur(16px);
+    }
+
+    .mode-switch {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      background: #1b1b1b;
+      padding: 5px;
+      border-radius: 18px;
+      margin-bottom: 12px;
+    }
+
+    .mode-switch button {
+      border: 0;
+      border-radius: 14px;
+      padding: 12px 8px;
+      background: transparent;
+      color: #aaa;
+      font-weight: 900;
+      cursor: pointer;
+      font-size: 14px;
+    }
+
+    .mode-switch button.active { background: #fff; color: #000; }
+
+    .status-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+
+    .driver-card { display: flex; align-items: center; gap: 10px; min-width: 0; }
+    .avatar {
+      width: 44px; height: 44px; border-radius: 50%;
+      background: linear-gradient(135deg, #fff, #8d8d8d);
+      color: #000; display: grid; place-items: center;
+      font-weight: 950; flex-shrink: 0;
+    }
+    .driver-meta { min-width: 0; }
+    .driver-name { font-weight: 900; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .driver-sub { color: #9b9b9b; font-size: 12px; margin-top: 2px; }
+
+    .earnings {
+      background: #151515;
+      border: 1px solid rgba(255,255,255,0.08);
+      padding: 8px 10px;
+      border-radius: 14px;
+      text-align: right;
+      min-width: 92px;
+    }
+    .earnings .label { font-size: 11px; color: #8b8b8b; }
+    .earnings .value { font-weight: 950; font-size: 18px; }
+
+    .request {
+      background: #151515;
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 20px;
+      padding: 12px;
+      margin-bottom: 12px;
+    }
+
+    .request-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; gap: 10px; }
+    .badge { background: #2bff88; color: #001707; border-radius: 999px; padding: 5px 9px; font-size: 12px; font-weight: 950; }
+    .badge.food { background: #ffcf4a; color: #241600; }
+    .badge.loading { background: #70a7ff; color: #001027; }
+    .fare { font-size: 24px; font-weight: 950; letter-spacing: -0.7px; }
+
+    .route-line { display: grid; grid-template-columns: 18px 1fr; gap: 10px; margin: 8px 0; align-items: start; }
+    .dot { width: 12px; height: 12px; border-radius: 50%; margin-top: 3px; background: #2bff88; box-shadow: 0 0 0 4px rgba(43,255,136,0.12); }
+    .dot.base { background: #70a7ff; box-shadow: 0 0 0 4px rgba(112,167,255,0.14); }
+    .dot.drop { background: #ff4a4a; box-shadow: 0 0 0 4px rgba(255,74,74,0.12); }
+    .place-title { font-weight: 850; font-size: 14px; }
+    .place-sub { color: #9a9a9a; font-size: 12px; margin-top: 2px; }
+
+    .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 10px; }
+    .stat { background: #0d0d0d; border-radius: 14px; padding: 9px; border: 1px solid rgba(255,255,255,0.07); }
+    .stat span { display: block; color: #888; font-size: 11px; margin-bottom: 3px; }
+    .stat strong { font-size: 14px; }
+
+    .route-note {
+      background: #0d0d0d;
+      border: 1px solid rgba(255,255,255,0.08);
+      color: #bdbdbd;
+      border-radius: 16px;
+      padding: 10px 12px;
+      font-size: 12px;
+      line-height: 1.35;
+      margin-bottom: 10px;
+    }
+
+    .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .btn { border: 0; border-radius: 18px; min-height: 52px; font-weight: 950; cursor: pointer; font-size: 15px; }
+    .btn.accept { background: #fff; color: #000; }
+    .btn.reject { background: #232323; color: #fff; }
+    .btn.full { grid-column: 1 / -1; background: #2bff88; color: #001707; }
+    .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+    .progress-wrap { height: 8px; background: #262626; border-radius: 999px; overflow: hidden; margin-top: 12px; display: none; }
+    .progress { height: 100%; width: 0%; background: #2bff88; transition: width 0.25s ease; }
+
+    .toast {
+      position: absolute;
+      top: calc(env(safe-area-inset-top, 0px) + 70px);
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 10;
+      background: rgba(0,0,0,0.88);
+      color: #fff;
+      border: 1px solid rgba(255,255,255,0.12);
+      padding: 10px 14px;
+      border-radius: 999px;
+      font-weight: 800;
+      font-size: 13px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.25s ease, transform 0.25s ease;
+      white-space: nowrap;
+      max-width: 94vw;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .toast.show { opacity: 1; transform: translateX(-50%) translateY(4px); }
+
+    .leaflet-control-attribution { font-size: 10px; background: rgba(255,255,255,0.75) !important; }
+    .car-marker, .food-marker, .pickup-marker, .drop-marker, .base-marker {
+      width: 34px; height: 34px; display: grid; place-items: center;
+      border-radius: 50%; border: 2px solid #fff;
+      box-shadow: 0 8px 20px rgba(0,0,0,0.35); font-size: 17px;
+    }
+    .car-marker { background: #000; }
+    .food-marker { background: #ffcf4a; color: #000; }
+    .pickup-marker { background: #2bff88; color: #000; font-weight: 950; }
+    .drop-marker { background: #ff4a4a; color: #fff; font-weight: 950; }
+    .base-marker { background: #70a7ff; color: #001027; font-weight: 950; }
+
+    @media (min-width: 700px) {
+      .panel { left: auto; right: 18px; bottom: 18px; width: 440px; margin: 0; }
+      .top-bar { left: 18px; right: 18px; }
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <div id="map"></div>
+
+    <div class="top-bar">
+      <div class="brand">Rīga Drive OSRM</div>
+      <button class="gps-btn" id="centerBtn" title="Centrēt karti">⌖</button>
+    </div>
+
+    <div class="toast" id="toast">Jauns pasūtījums</div>
+
+    <section class="panel">
+      <div class="mode-switch">
+        <button id="taxiMode" class="active">🚕 Uber Taxi</button>
+        <button id="foodMode">🍔 Uber Eats</button>
+      </div>
+
+      <div class="status-row">
+        <div class="driver-card">
+          <div class="avatar">MD</div>
+          <div class="driver-meta">
+            <div class="driver-name" id="driverTitle">Vadītājs tiešsaistē</div>
+            <div class="driver-sub" id="driverSub">Starts: F. Candera iela 19</div>
+          </div>
+        </div>
+        <div class="earnings">
+          <div class="label">Šodien</div>
+          <div class="value" id="earnings">€0.00</div>
+        </div>
+      </div>
+
+      <div class="request" id="requestCard">
+        <div class="request-head">
+          <div class="badge loading" id="typeBadge">OSRM</div>
+          <div class="fare" id="fare">...</div>
+        </div>
+
+        <div class="route-line">
+          <div class="dot base"></div>
+          <div>
+            <div class="place-title" id="baseTitle">F. Candera iela 19</div>
+            <div class="place-sub" id="baseSub">Transporta sākuma punkts</div>
+          </div>
+        </div>
+
+        <div class="route-line">
+          <div class="dot"></div>
+          <div>
+            <div class="place-title" id="pickupTitle">Meklē pasūtījumu...</div>
+            <div class="place-sub" id="pickupSub">OSRM aprēķina īstu maršrutu</div>
+          </div>
+        </div>
+
+        <div class="route-line">
+          <div class="dot drop"></div>
+          <div>
+            <div class="place-title" id="dropTitle">...</div>
+            <div class="place-sub" id="dropSub">...</div>
+          </div>
+        </div>
+
+        <div class="stats">
+          <div class="stat"><span>Kopā</span><strong id="distance">...</strong></div>
+          <div class="stat"><span>Laiks</span><strong id="duration">...</strong></div>
+          <div class="stat"><span>Reitings</span><strong id="rating">...</strong></div>
+        </div>
+
+        <div class="progress-wrap" id="progressWrap">
+          <div class="progress" id="progress"></div>
+        </div>
+      </div>
+
+      <div class="route-note" id="routeNote">
+        Spied “Rādīt maršrutu”, tad brauc pats BeamNG Drive pēc kartes līnijas.
+      </div>
+
+      <div class="actions" id="actions">
+        <button class="btn reject" id="rejectBtn" disabled>Noraidīt</button>
+        <button class="btn accept" id="acceptBtn" disabled>Pieņemt</button>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    // F. Candera iela 19, Rīga. Koordinātas aptuveni atbilst adresei pie Zasulauka / Pārdaugavas.
+    const BASE = {
+      name: 'F. Candera iela 19',
+      sub: 'Transporta sākuma punkts',
+      lat: 56.95215,
+      lng: 24.04975
+    };
+
+    const OSRM_ENDPOINT = 'https://router.project-osrm.org/route/v1/driving/';
+
+    const places = [
+      { name: 'Brīvības piemineklis', sub: 'Centrs', lat: 56.9516, lng: 24.1132 },
+      { name: 'Rīgas Centrālā stacija', sub: 'Stacijas laukums', lat: 56.9469, lng: 24.1203 },
+      { name: 'Rīgas lidosta', sub: 'Mārupe', lat: 56.9236, lng: 23.9711 },
+      { name: 'Āgenskalna tirgus', sub: 'Nometņu iela', lat: 56.9365, lng: 24.0727 },
+      { name: 'Mežaparks', sub: 'Kokneses prospekts', lat: 57.0007, lng: 24.1599 },
+      { name: 'Akropole Rīga', sub: 'Maskavas iela', lat: 56.9239, lng: 24.1742 },
+      { name: 'Domina Shopping', sub: 'Ieriķu iela', lat: 56.9665, lng: 24.1634 },
+      { name: 'VEF kvartāls', sub: 'Brīvības gatve', lat: 56.9741, lng: 24.1662 },
+      { name: 'Latvijas Nacionālā bibliotēka', sub: 'Mūkusalas iela', lat: 56.9410, lng: 24.0961 },
+      { name: 'Dailes teātris', sub: 'Brīvības iela', lat: 56.9592, lng: 24.1240 },
+      { name: 'Zemitāna laukums', sub: 'Teika', lat: 56.9765, lng: 24.1717 },
+      { name: 'Spice', sub: 'Lielirbes iela', lat: 56.9305, lng: 24.0369 },
+      { name: 'Lucavsala', sub: 'Atpūtas parks', lat: 56.9233, lng: 24.1032 },
+      { name: 'Andrejsala', sub: 'Eksporta iela', lat: 56.9637, lng: 24.0932 },
+      { name: 'Jugla', sub: 'Brīvības gatve', lat: 56.9863, lng: 24.2447 },
+      { name: 'Imanta', sub: 'Kurzemes prospekts', lat: 56.9563, lng: 24.0009 },
+      { name: 'Ķīpsala', sub: 'Izstāžu centrs', lat: 56.9507, lng: 24.0782 },
+      { name: 'Skanste', sub: 'Arēna Rīga', lat: 56.9679, lng: 24.1219 }
+    ];
+
+    const restaurants = [
+      { name: 'Street Burgers', sub: 'Burgeru pasūtījums', lat: 56.9563, lng: 24.1219 },
+      { name: 'Lido Vērmanītis', sub: 'Siltais ēdiens', lat: 56.9510, lng: 24.1202 },
+      { name: 'Ezītis miglā', sub: 'Vakariņu piegāde', lat: 56.9484, lng: 24.1068 },
+      { name: 'Pizza Italia', sub: '2 picas + dzēriens', lat: 56.9636, lng: 24.1323 },
+      { name: 'Sushi Room', sub: 'Suši komplekts', lat: 56.9397, lng: 24.0835 },
+      { name: 'Wok to Walk', sub: 'Ātra piegāde', lat: 56.9501, lng: 24.1138 },
+      { name: 'Kebab Factory', sub: 'Kebabs + frī', lat: 56.9448, lng: 24.1059 },
+      { name: 'Ramen Riga', sub: 'Ramen piegāde', lat: 56.9588, lng: 24.1310 }
+    ];
+
+    let mode = 'taxi';
+    let currentJob = null;
+    let accepted = false;
+    let totalEarnings = 0;
+    let mainRouteLayer = null;
+    let toPickupLayer = null;
+    let baseMarker = null;
+    let pickupMarker = null;
+    let dropMarker = null;
+    let driverMarker = null;
+    let routePointsForDisplay = [];
+    let routeVisible = false;
+
+    const map = L.map('map', { zoomControl: false, attributionControl: true }).setView([BASE.lat, BASE.lng], 13);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+    L.control.zoom({ position: 'bottomleft' }).addTo(map);
+
+    const icons = {
+      car: L.divIcon({ className: '', html: '<div class="car-marker">🚗</div>', iconSize: [34,34], iconAnchor: [17,17] }),
+      food: L.divIcon({ className: '', html: '<div class="food-marker">🛵</div>', iconSize: [34,34], iconAnchor: [17,17] }),
+      base: L.divIcon({ className: '', html: '<div class="base-marker">S</div>', iconSize: [34,34], iconAnchor: [17,17] }),
+      pickup: L.divIcon({ className: '', html: '<div class="pickup-marker">A</div>', iconSize: [34,34], iconAnchor: [17,17] }),
+      drop: L.divIcon({ className: '', html: '<div class="drop-marker">B</div>', iconSize: [34,34], iconAnchor: [17,17] })
+    };
+
+    baseMarker = L.marker([BASE.lat, BASE.lng], { icon: icons.base }).addTo(map).bindPopup('Starts: F. Candera iela 19');
+    driverMarker = L.marker([BASE.lat, BASE.lng], { icon: icons.car }).addTo(map).bindPopup('Starts: F. Candera iela 19');
+
+    const el = {
+      taxiMode: document.getElementById('taxiMode'),
+      foodMode: document.getElementById('foodMode'),
+      driverTitle: document.getElementById('driverTitle'),
+      driverSub: document.getElementById('driverSub'),
+      earnings: document.getElementById('earnings'),
+      typeBadge: document.getElementById('typeBadge'),
+      fare: document.getElementById('fare'),
+      pickupTitle: document.getElementById('pickupTitle'),
+      pickupSub: document.getElementById('pickupSub'),
+      dropTitle: document.getElementById('dropTitle'),
+      dropSub: document.getElementById('dropSub'),
+      distance: document.getElementById('distance'),
+      duration: document.getElementById('duration'),
+      rating: document.getElementById('rating'),
+      actions: document.getElementById('actions'),
+      progressWrap: document.getElementById('progressWrap'),
+      progress: document.getElementById('progress'),
+      routeNote: document.getElementById('routeNote'),
+      toast: document.getElementById('toast'),
+      centerBtn: document.getElementById('centerBtn')
+    };
+
+    function rand(min, max) { return Math.random() * (max - min) + min; }
+    function pick(array) { return array[Math.floor(Math.random() * array.length)]; }
+
+    function setButtons(disabled) {
+      const accept = document.getElementById('acceptBtn');
+      const reject = document.getElementById('rejectBtn');
+      if (accept) accept.disabled = disabled;
+      if (reject) reject.disabled = disabled;
+    }
+
+    function setLoadingUI() {
+      el.typeBadge.textContent = 'OSRM';
+      el.typeBadge.className = 'badge loading';
+      el.fare.textContent = '...';
+      el.pickupTitle.textContent = 'Meklē pasūtījumu...';
+      el.pickupSub.textContent = 'OSRM aprēķina īstu maršrutu';
+      el.dropTitle.textContent = '...';
+      el.dropSub.textContent = '...';
+      el.distance.textContent = '...';
+      el.duration.textContent = '...';
+      el.rating.textContent = '...';
+      el.progressWrap.style.display = 'none';
+      el.progress.style.width = '0%';
+      el.actions.innerHTML = '<button class="btn reject" id="rejectBtn" disabled>Jauns pasūtījums</button><button class="btn accept" id="acceptBtn" disabled>Rādīt maršrutu</button>';
+    }
+
+    async function getOsrmRoute(points) {
+      const coordinates = points.map(p => `${p.lng},${p.lat}`).join(';');
+      const url = `${OSRM_ENDPOINT}${coordinates}?overview=full&geometries=geojson&steps=false`;
+      const response = await fetch(url);
+      if (!response.ok) throw new Error('OSRM servera kļūda');
+      const data = await response.json();
+      if (!data.routes || !data.routes[0]) throw new Error('OSRM neatrada maršrutu');
+      const route = data.routes[0];
+      return {
+        distanceKm: route.distance / 1000,
+        durationMin: Math.round(route.duration / 60),
+        latLngs: route.geometry.coordinates.map(([lng, lat]) => [lat, lng])
+      };
+    }
+
+    function makeJobBase() {
+      let pickup;
+      let drop;
+      if (mode === 'taxi') {
+        pickup = pick(places);
+        do { drop = pick(places); } while (drop.name === pickup.name);
+      } else {
+        pickup = pick(restaurants);
+        drop = pick(places);
+      }
+      return { mode, pickup, drop };
+    }
+
+    function clearMapJob() {
+      if (mainRouteLayer) map.removeLayer(mainRouteLayer);
+      if (toPickupLayer) map.removeLayer(toPickupLayer);
+      if (pickupMarker) map.removeLayer(pickupMarker);
+      if (dropMarker) map.removeLayer(dropMarker);
+      mainRouteLayer = toPickupLayer = pickupMarker = dropMarker = null;
+    }
+
+    async function renderJob() {
+      clearMapJob();
+      accepted = false;
+      routeVisible = false;
+      routePointsForDisplay = [];
+      el.progressWrap.style.display = 'none';
+      el.progress.style.width = '0%';
+      el.routeNote.textContent = 'Spied “Rādīt maršrutu”, tad brauc pats BeamNG Drive pēc kartes līnijas.';
+      setLoadingUI();
+      driverMarker.setLatLng([BASE.lat, BASE.lng]);
+      driverMarker.setIcon(mode === 'taxi' ? icons.car : icons.food);
+      showToast('OSRM aprēķina maršrutu...');
+
+      const baseJob = makeJobBase();
+
+      try {
+        const toPickupRoute = await getOsrmRoute([BASE, baseJob.pickup]);
+        const jobRoute = await getOsrmRoute([baseJob.pickup, baseJob.drop]);
+        const totalKm = toPickupRoute.distanceKm + jobRoute.distanceKm;
+        const totalMin = toPickupRoute.durationMin + jobRoute.durationMin;
+        const fareBase = mode === 'taxi'
+          ? 2.50 + jobRoute.distanceKm * 0.82 + jobRoute.durationMin * 0.14
+          : 1.90 + jobRoute.distanceKm * 0.58 + jobRoute.durationMin * 0.10;
+
+        currentJob = {
+          ...baseJob,
+          toPickupRoute,
+          jobRoute,
+          totalKm,
+          totalMin,
+          fare: Math.max(mode === 'taxi' ? 4.20 : 3.10, fareBase + rand(-0.5, 1.2)),
+          rating: rand(4.72, 5.0).toFixed(1)
+        };
+
+        renderJobUI(currentJob);
+        drawRoute(currentJob);
+        showToast(mode === 'taxi' ? 'Jauns taxi brauciens ar īstu OSRM maršrutu' : 'Jauna piegāde ar īstu OSRM maršrutu');
+      } catch (error) {
+        console.error(error);
+        el.typeBadge.textContent = 'KĻŪDA';
+        el.typeBadge.className = 'badge loading';
+        el.fare.textContent = '—';
+        el.pickupTitle.textContent = 'OSRM nav pieejams';
+        el.pickupSub.textContent = 'Pārbaudi internetu vai mēģini vēlreiz';
+        el.dropTitle.textContent = 'Publiskais OSRM serveris var būt aizņemts';
+        el.dropSub.textContent = 'Spied “Mēģināt vēlreiz”';
+        el.actions.innerHTML = '<button class="btn full" id="retryBtn">Mēģināt vēlreiz</button>';
+        document.getElementById('retryBtn').onclick = renderJob;
+        showToast('OSRM kļūda');
+      }
+    }
+
+    function renderJobUI(job) {
+      el.typeBadge.textContent = job.mode === 'taxi' ? 'TAXI' : 'EATS';
+      el.typeBadge.className = job.mode === 'taxi' ? 'badge' : 'badge food';
+      el.fare.textContent = '€' + job.fare.toFixed(2);
+      el.pickupTitle.textContent = job.pickup.name;
+      el.pickupSub.textContent = job.mode === 'taxi'
+        ? 'Sākums F. Candera ielā 19 → paņem pasažieri'
+        : 'Sākums F. Candera ielā 19 → paņem ēdienu';
+      el.dropTitle.textContent = job.drop.name;
+      el.dropSub.textContent = job.mode === 'taxi'
+        ? 'Aizved pasažieri līdz galamērķim'
+        : 'Aizved pasūtījumu līdz klientam';
+      el.distance.textContent = job.totalKm.toFixed(1) + ' km';
+      el.duration.textContent = job.totalMin + ' min';
+      el.rating.textContent = job.rating + ' ★';
+      el.actions.innerHTML = '<button class="btn reject" id="rejectBtn">Jauns pasūtījums</button><button class="btn accept" id="acceptBtn">Rādīt maršrutu</button>';
+      document.getElementById('rejectBtn').onclick = rejectJob;
+      document.getElementById('acceptBtn').onclick = showRouteOnly;
+    }
+
+    function drawRoute(job) {
+      clearMapJob();
+      toPickupLayer = L.polyline(job.toPickupRoute.latLngs, {
+        color: '#70a7ff',
+        weight: 5,
+        opacity: 0.82,
+        lineCap: 'round',
+        lineJoin: 'round',
+        dashArray: '8 8'
+      }).addTo(map);
+
+      mainRouteLayer = L.polyline(job.jobRoute.latLngs, {
+        color: job.mode === 'taxi' ? '#111111' : '#ffb400',
+        weight: 7,
+        opacity: 0.9,
+        lineCap: 'round',
+        lineJoin: 'round'
+      }).addTo(map);
+
+      pickupMarker = L.marker([job.pickup.lat, job.pickup.lng], { icon: icons.pickup }).addTo(map).bindPopup('Paņemšana: ' + job.pickup.name);
+      dropMarker = L.marker([job.drop.lat, job.drop.lng], { icon: icons.drop }).addTo(map).bindPopup('Galamērķis: ' + job.drop.name);
+
+      routePointsForDisplay = [...job.toPickupRoute.latLngs, ...job.jobRoute.latLngs];
+      const bounds = L.latLngBounds([...job.toPickupRoute.latLngs, ...job.jobRoute.latLngs, [BASE.lat, BASE.lng]]);
+      map.fitBounds(bounds, { paddingTopLeft: [40, 80], paddingBottomRight: [40, 330] });
+    }
+
+    function rejectJob() {
+      showToast('Pasūtījums noraidīts');
+      renderJob();
+    }
+
+    function showRouteOnly() {
+      if (!currentJob) return;
+      routeVisible = true;
+      driverMarker.setLatLng([BASE.lat, BASE.lng]);
+      driverMarker.setIcon(currentJob.mode === 'taxi' ? icons.car : icons.food);
+      el.driverTitle.textContent = 'BeamNG maršruts gatavs';
+      el.driverSub.textContent = 'Skaties karti un brauc pats BeamNG Drive';
+      el.progressWrap.style.display = 'none';
+      el.routeNote.textContent = 'Maršruts ir parādīts. Zilā līnija: no F. Candera 19 līdz paņemšanai. Galvenā līnija: brauciens/piegāde līdz galamērķim.';
+      el.actions.innerHTML = '<button class="btn reject" id="rejectBtn">Cits pasūtījums</button><button class="btn accept" id="finishBtn">Pabeigt</button>';
+      document.getElementById('rejectBtn').onclick = rejectJob;
+      document.getElementById('finishBtn').onclick = finishJob;
+      const bounds = L.latLngBounds(routePointsForDisplay);
+      map.fitBounds(bounds, { paddingTopLeft: [40, 80], paddingBottomRight: [40, 330] });
+      showToast('Route gatavs BeamNG braukšanai');
+    }
+
+    function moveDriverAlongRoute(t) {
+      // BeamNG režīmā auto kartē netiek vadīts. Karte tikai rāda route.
+    }
+
+    function finishJob() {
+      if (!currentJob) return;
+      totalEarnings += currentJob.fare;
+      el.earnings.textContent = '€' + totalEarnings.toFixed(2);
+      el.driverTitle.textContent = 'Vadītājs tiešsaistē';
+      el.driverSub.textContent = 'Nākamais starts atkal no F. Candera ielas 19';
+      el.routeNote.textContent = 'Pasūtījums pabeigts. Vari ņemt nākamo BeamNG maršrutu.';
+      showToast('Pabeigts +€' + currentJob.fare.toFixed(2));
+      setTimeout(renderJob, 900);
+    }
+
+    function setMode(nextMode) {
+      mode = nextMode;
+      el.taxiMode.classList.toggle('active', mode === 'taxi');
+      el.foodMode.classList.toggle('active', mode === 'food');
+      el.driverSub.textContent = 'Starts: F. Candera iela 19';
+      driverMarker.setIcon(mode === 'taxi' ? icons.car : icons.food);
+      renderJob();
+    }
+
+    function showToast(message) {
+      el.toast.textContent = message;
+      el.toast.classList.add('show');
+      setTimeout(() => el.toast.classList.remove('show'), 1800);
+    }
+
+    el.taxiMode.onclick = () => setMode('taxi');
+    el.foodMode.onclick = () => setMode('food');
+    el.centerBtn.onclick = () => {
+      const allLayers = [];
+      if (toPickupLayer) allLayers.push(...toPickupLayer.getLatLngs());
+      if (mainRouteLayer) allLayers.push(...mainRouteLayer.getLatLngs());
+      allLayers.push(L.latLng(BASE.lat, BASE.lng));
+      if (allLayers.length) map.fitBounds(L.latLngBounds(allLayers), { paddingTopLeft: [40, 80], paddingBottomRight: [40, 330] });
+      else map.setView([BASE.lat, BASE.lng], 13);
+    };
+
+    renderJob();
+  </script>
+</body>
+</html>
